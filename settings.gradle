@@ -1,0 +1,2 @@
+rootProject.name='Simul Front Rear Camera'
+include ':app'
