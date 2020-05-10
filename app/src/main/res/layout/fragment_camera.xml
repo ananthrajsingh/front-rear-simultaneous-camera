@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
     <com.ananth.frontrearcamera.view.AutoFitTextureView
-        android:id="@+id/texture"
+        android:layout_weight="1"
+        android:id="@+id/texture1"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentStart="true"
-        android:layout_alignParentTop="true" />
-</RelativeLayout>
+        android:layout_height="wrap_content" />
+
+    <com.ananth.frontrearcamera.view.AutoFitTextureView
+        android:layout_weight="1"
+        android:id="@+id/texture2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+</LinearLayout>

@@ -3,7 +3,6 @@ package com.ananth.frontrearcamera.fragment
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.graphics.*
 import android.hardware.camera2.*
 import android.media.ImageReader
@@ -18,7 +17,7 @@ import androidx.fragment.app.Fragment
 import androidx.core.content.ContextCompat
 
 import com.ananth.frontrearcamera.R
-import com.ananth.frontrearcamera.util.CompareSizesByArea
+import com.ananth.frontrearcamera.util.CompareSizesByViewAspectRatio
 import com.ananth.frontrearcamera.util.REQUEST_CAMERA_PERMISSION
 import com.ananth.frontrearcamera.view.AutoFitTextureView
 import com.ananth.frontrearcamera.view.ConfirmationDialog
@@ -190,7 +189,7 @@ class CameraFragment : Fragment() {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        textureView = view.findViewById(R.id.texture)
+        textureView = view.findViewById(R.id.texture1)
     }
 
     override fun onResume() {
@@ -256,7 +255,7 @@ class CameraFragment : Fragment() {
                 // We don't use a front facing camera in this sample.
                 val cameraDirection = characteristics.get(CameraCharacteristics.LENS_FACING)
                 if (cameraDirection != null &&
-                    cameraDirection == CameraCharacteristics.LENS_FACING_FRONT) {
+                    cameraDirection == CameraCharacteristics.LENS_FACING_BACK) {
                     continue
                 }
 
@@ -264,14 +263,15 @@ class CameraFragment : Fragment() {
                     CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: continue
 
                 // For still image captures, we use the largest available size.
-                val largest = Collections.max(
+                val aspectRatio = Collections.max(
                     Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
-                    CompareSizesByArea())
-                imageReader = ImageReader.newInstance(largest.width, largest.height,
+                    CompareSizesByViewAspectRatio(textureView.height, textureView.width))
+                imageReader = ImageReader.newInstance(aspectRatio.width, aspectRatio.height,
                     ImageFormat.JPEG, /*maxImages*/ 2).apply {
                     setOnImageAvailableListener(onImageAvailableListener, backgroundHandler)
                 }
 
+                Log.d(TAG, "selected aspect ratio " + aspectRatio.height  + "x" + aspectRatio.width + " : " + aspectRatio.height/aspectRatio.width)
                 // Find out if we need to swap dimension to get the preview size relative to sensor
                 // coordinate.
                 val displayRotation = activity!!.windowManager.defaultDisplay.rotation
@@ -295,14 +295,21 @@ class CameraFragment : Fragment() {
                 previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture::class.java),
                     rotatedPreviewWidth, rotatedPreviewHeight,
                     maxPreviewWidth, maxPreviewHeight,
-                    largest)
+                    aspectRatio)
 
-                // We fit the aspect ratio of TextureView to the size of preview we picked.
-                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                    textureView.setAspectRatio(previewSize.width, previewSize.height)
-                } else {
-                    textureView.setAspectRatio(previewSize.height, previewSize.width)
-                }
+
+                /*
+                 * We are filling the whole view with camera preview, on a downside, this distorts
+                 * the aspect ratio.
+                 * To retain the aspect ratio, uncomment the below line.
+                 * Another option is the crop preview into the view, for that we have to choose
+                 * preview ratio such that it comes nearest to aspect ratio of view.
+                 */
+//                if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+//                    textureView.setAspectRatio(previewSize.width, previewSize.height)
+//                } else {
+//                    textureView.setAspectRatio(previewSize.height, previewSize.width)
+//                }
 
                 // Check if the flash is supported.
                 flashSupported =
@@ -546,9 +553,9 @@ class CameraFragment : Fragment() {
             // Pick the smallest of those big enough. If there is no one big enough, pick the
             // largest of those not big enough.
             if (bigEnough.size > 0) {
-                return Collections.min(bigEnough, CompareSizesByArea())
+                return Collections.min(bigEnough, CompareSizesByViewAspectRatio(textureViewHeight, textureViewWidth))
             } else if (notBigEnough.size > 0) {
-                return Collections.max(notBigEnough, CompareSizesByArea())
+                return Collections.max(notBigEnough, CompareSizesByViewAspectRatio(textureViewHeight, textureViewWidth))
             } else {
                 Log.e(TAG, "Couldn't find any suitable preview size")
                 return choices[0]
