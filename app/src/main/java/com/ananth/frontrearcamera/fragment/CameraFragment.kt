@@ -47,9 +47,14 @@ class CameraFragment : Fragment() {
     private var imageReader: ImageReader? = null
 
     /**
-     * An [AutoFitTextureView] to show the camera preview.
+     * An [AutoFitTextureView] to show the camera preview from front camera.
      */
-    private lateinit var textureView: AutoFitTextureView
+    private lateinit var textureViewFront: AutoFitTextureView
+
+    /**
+     * An [AutoFitTextureView] to show the camera preview from rear camera.
+     */
+    private lateinit var textureViewBack: AutoFitTextureView
 
     /**
      * A [CameraCaptureSession] for camera preview.
@@ -139,7 +144,27 @@ class CameraFragment : Fragment() {
      * [TextureView.SurfaceTextureListener] handles several lifecycle events on a
      * [TextureView].
      */
-    private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+    private val surfaceTextureListenerFront = object : TextureView.SurfaceTextureListener {
+
+        override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+            openCamera(width, height)
+        }
+
+        override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
+            configureTransform(width, height)
+        }
+
+        override fun onSurfaceTextureDestroyed(texture: SurfaceTexture) = true
+
+        override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+
+    }
+
+    /**
+     * [TextureView.SurfaceTextureListener] handles several lifecycle events on a
+     * [TextureView].
+     */
+    private val surfaceTextureListenerRear = object : TextureView.SurfaceTextureListener {
 
         override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
             openCamera(width, height)
@@ -189,7 +214,8 @@ class CameraFragment : Fragment() {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        textureView = view.findViewById(R.id.texture1)
+        textureViewFront = view.findViewById(R.id.texture1)
+        textureViewBack = view.findViewById(R.id.texture2)
     }
 
     override fun onResume() {
@@ -199,10 +225,15 @@ class CameraFragment : Fragment() {
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
         // the SurfaceTextureListener).
-        if (textureView.isAvailable) {
-            openCamera(textureView.width, textureView.height)
+        if (textureViewFront.isAvailable) {
+            openCamera(textureViewFront.width, textureViewFront.height)
         } else {
-            textureView.surfaceTextureListener = surfaceTextureListener
+            textureViewFront.surfaceTextureListener = surfaceTextureListenerFront
+        }
+        if (textureViewBack.isAvailable) {
+            openCamera(textureViewBack.width, textureViewBack.height)
+        } else {
+            textureViewBack.surfaceTextureListener = surfaceTextureListenerRear
         }
     }
 
@@ -265,7 +296,7 @@ class CameraFragment : Fragment() {
                 // For still image captures, we use the largest available size.
                 val aspectRatio = Collections.max(
                     Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
-                    CompareSizesByViewAspectRatio(textureView.height, textureView.width))
+                    CompareSizesByViewAspectRatio(textureViewFront.height, textureViewFront.width))
                 imageReader = ImageReader.newInstance(aspectRatio.width, aspectRatio.height,
                     ImageFormat.JPEG, /*maxImages*/ 2).apply {
                     setOnImageAvailableListener(onImageAvailableListener, backgroundHandler)
@@ -363,7 +394,7 @@ class CameraFragment : Fragment() {
         } else if (Surface.ROTATION_180 == rotation) {
             matrix.postRotate(180f, centerX, centerY)
         }
-        textureView.setTransform(matrix)
+        textureViewFront.setTransform(matrix)
     }
 
     /**
@@ -422,7 +453,7 @@ class CameraFragment : Fragment() {
      */
     private fun createCameraPreviewSession() {
         try {
-            val texture = textureView.surfaceTexture
+            val texture = textureViewFront.surfaceTexture
 
             // We configure the size of default buffer to be the size of camera preview we want.
             texture.setDefaultBufferSize(previewSize.width, previewSize.height)
