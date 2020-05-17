@@ -200,7 +200,7 @@ class CameraFragment : Fragment() {
         }
 
         override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
-            configureTransform(width, height)
+            configureTransformFront(width, height)
         }
 
         override fun onSurfaceTextureDestroyed(texture: SurfaceTexture) = true
@@ -216,11 +216,11 @@ class CameraFragment : Fragment() {
     private val surfaceTextureListenerRear = object : TextureView.SurfaceTextureListener {
 
         override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-            openCameraFront(width, height)
+            openCameraRear(width, height)
         }
 
         override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
-            configureTransform(width, height)
+            configureTransformRear(width, height)
         }
 
         override fun onSurfaceTextureDestroyed(texture: SurfaceTexture) = true
@@ -259,13 +259,13 @@ class CameraFragment : Fragment() {
     private val stateCallbackRear = object : CameraDevice.StateCallback() {
 
         override fun onOpened(cameraDevice: CameraDevice) {
-            cameraOpenCloseLock.release()
+//            cameraOpenCloseLock.release()
             this@CameraFragment.cameraDeviceRear = cameraDevice
-            createCameraPreviewSessionFront()
+            createCameraPreviewSessionRear()
         }
 
         override fun onDisconnected(cameraDevice: CameraDevice) {
-            cameraOpenCloseLock.release()
+//            cameraOpenCloseLock.release()
             cameraDevice.close()
             this@CameraFragment.cameraDeviceRear = null
         }
@@ -319,7 +319,7 @@ class CameraFragment : Fragment() {
             return
         }
         setUpCameraOutputsFront(width, height)
-        configureTransform(width, height)
+        configureTransformFront(width, height)
         val manager = activity?.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
             // Wait for camera to open - 2.5 seconds is sufficient
@@ -344,15 +344,15 @@ class CameraFragment : Fragment() {
             requestCameraPermission()
             return
         }
-        setUpCameraOutputsFront(width, height)
-        configureTransform(width, height)
+        setUpCameraOutputsRear(width, height)
+        configureTransformRear(width, height)
         val manager = activity?.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
             // Wait for camera to open - 2.5 seconds is sufficient
-            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
-                throw RuntimeException("Time out waiting to lock camera opening.")
-            }
-            manager.openCamera(cameraIdFront, stateCallbackFront, backgroundHandler)
+//            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
+//                throw RuntimeException("Time out waiting to lock camera opening.")
+//            }
+            manager.openCamera(cameraIdRear, stateCallbackRear, backgroundHandler)
         } catch (e: CameraAccessException) {
             Log.e(TAG, e.toString())
         } catch (e: InterruptedException) {
@@ -407,7 +407,7 @@ class CameraFragment : Fragment() {
                 val displayRotation = activity!!.windowManager.defaultDisplay.rotation
 
                 sensorOrientationFront = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
-                val swappedDimensions = areDimensionsSwapped(displayRotation)
+                val swappedDimensions = areDimensionsSwappedFront(displayRotation)
 
                 val displaySize = Point()
                 activity!!.windowManager.defaultDisplay.getSize(displaySize)
@@ -499,7 +499,7 @@ class CameraFragment : Fragment() {
                 val displayRotation = activity!!.windowManager.defaultDisplay.rotation
 
                 sensorOrientationRear = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
-                val swappedDimensions = areDimensionsSwapped(displayRotation)
+                val swappedDimensions = areDimensionsSwappedRear(displayRotation)
 
                 val displaySize = Point()
                 activity!!.windowManager.defaultDisplay.getSize(displaySize)
@@ -564,7 +564,7 @@ class CameraFragment : Fragment() {
      * @param viewWidth  The width of `textureView`
      * @param viewHeight The height of `textureView`
      */
-    private fun configureTransform(viewWidth: Int, viewHeight: Int) {
+    private fun configureTransformFront(viewWidth: Int, viewHeight: Int) {
         activity ?: return
         val rotation = activity!!.windowManager.defaultDisplay.rotation
         val matrix = Matrix()
@@ -590,13 +590,46 @@ class CameraFragment : Fragment() {
     }
 
     /**
+     * Configures the necessary [android.graphics.Matrix] transformation to `textureView`.
+     * This method should be called after the camera preview size is determined in
+     * setUpCameraOutputs and also the size of `textureView` is fixed.
+     *
+     * @param viewWidth  The width of `textureView`
+     * @param viewHeight The height of `textureView`
+     */
+    private fun configureTransformRear(viewWidth: Int, viewHeight: Int) {
+        activity ?: return
+        val rotation = activity!!.windowManager.defaultDisplay.rotation
+        val matrix = Matrix()
+        val viewRect = RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+        val bufferRect = RectF(0f, 0f, previewSizeRear.height.toFloat(), previewSizeRear.width.toFloat())
+        val centerX = viewRect.centerX()
+        val centerY = viewRect.centerY()
+
+        if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
+            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
+            val scale = Math.max(
+                viewHeight.toFloat() / previewSizeRear.height,
+                viewWidth.toFloat() / previewSizeRear.width)
+            with(matrix) {
+                setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
+                postScale(scale, scale, centerX, centerY)
+                postRotate((90 * (rotation - 2)).toFloat(), centerX, centerY)
+            }
+        } else if (Surface.ROTATION_180 == rotation) {
+            matrix.postRotate(180f, centerX, centerY)
+        }
+        textureViewRear.setTransform(matrix)
+    }
+
+    /**
      * Determines if the dimensions are swapped given the phone's current rotation.
      *
      * @param displayRotation The current rotation of the display
      *
      * @return true if the dimensions are swapped, false otherwise.
      */
-    private fun areDimensionsSwapped(displayRotation: Int): Boolean {
+    private fun areDimensionsSwappedFront(displayRotation: Int): Boolean {
         var swappedDimensions = false
         when (displayRotation) {
             Surface.ROTATION_0, Surface.ROTATION_180 -> {
@@ -616,6 +649,33 @@ class CameraFragment : Fragment() {
         return swappedDimensions
     }
 
+
+    /**
+     * Determines if the dimensions are swapped given the phone's current rotation.
+     *
+     * @param displayRotation The current rotation of the display
+     *
+     * @return true if the dimensions are swapped, false otherwise.
+     */
+    private fun areDimensionsSwappedRear(displayRotation: Int): Boolean {
+        var swappedDimensions = false
+        when (displayRotation) {
+            Surface.ROTATION_0, Surface.ROTATION_180 -> {
+                if (sensorOrientationRear == 90 || sensorOrientationRear == 270) {
+                    swappedDimensions = true
+                }
+            }
+            Surface.ROTATION_90, Surface.ROTATION_270 -> {
+                if (sensorOrientationRear == 0 || sensorOrientationRear == 180) {
+                    swappedDimensions = true
+                }
+            }
+            else -> {
+                Log.e(TAG, "Display rotation is invalid: $displayRotation")
+            }
+        }
+        return swappedDimensions
+    }
 
     /**
      * Starts a background thread and its [Handler].
@@ -698,7 +758,7 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * Creates a new [CameraCaptureSession] for camera preview.
+     * Creates a new [CameraCaptureSession] for rear camera preview.
      */
     private fun createCameraPreviewSessionRear() {
         try {
