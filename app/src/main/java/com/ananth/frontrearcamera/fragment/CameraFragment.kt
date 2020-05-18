@@ -235,13 +235,13 @@ class CameraFragment : Fragment() {
     private val stateCallbackFront = object : CameraDevice.StateCallback() {
 
         override fun onOpened(cameraDevice: CameraDevice) {
-            cameraOpenCloseLock.release()
+//            cameraOpenCloseLock.release()
             this@CameraFragment.cameraDeviceFront = cameraDevice
             createCameraPreviewSessionFront()
         }
 
         override fun onDisconnected(cameraDevice: CameraDevice) {
-            cameraOpenCloseLock.release()
+//            cameraOpenCloseLock.release()
             cameraDevice.close()
             this@CameraFragment.cameraDeviceFront = null
         }
@@ -259,13 +259,13 @@ class CameraFragment : Fragment() {
     private val stateCallbackRear = object : CameraDevice.StateCallback() {
 
         override fun onOpened(cameraDevice: CameraDevice) {
-//            cameraOpenCloseLock.release()
+            cameraOpenCloseLock.release()
             this@CameraFragment.cameraDeviceRear = cameraDevice
             createCameraPreviewSessionRear()
         }
 
         override fun onDisconnected(cameraDevice: CameraDevice) {
-//            cameraOpenCloseLock.release()
+            cameraOpenCloseLock.release()
             cameraDevice.close()
             this@CameraFragment.cameraDeviceRear = null
         }
@@ -309,6 +309,13 @@ class CameraFragment : Fragment() {
         }
     }
 
+    override fun onPause() {
+        closeCameraFront()
+        closeCameraRear()
+        stopBackgroundThread()
+        super.onPause()
+    }
+
     /**
      * Opens the camera specified by [Camera2BasicFragment.cameraId].
      */
@@ -323,9 +330,9 @@ class CameraFragment : Fragment() {
         val manager = activity?.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
             // Wait for camera to open - 2.5 seconds is sufficient
-            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
-                throw RuntimeException("Time out waiting to lock camera opening.")
-            }
+//            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
+//                throw RuntimeException("Time out waiting to lock camera opening.")
+//            }
             manager.openCamera(cameraIdFront, stateCallbackFront, backgroundHandler)
         } catch (e: CameraAccessException) {
             Log.e(TAG, e.toString())
@@ -349,9 +356,9 @@ class CameraFragment : Fragment() {
         val manager = activity?.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
             // Wait for camera to open - 2.5 seconds is sufficient
-//            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
-//                throw RuntimeException("Time out waiting to lock camera opening.")
-//            }
+            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
+                throw RuntimeException("Time out waiting to lock camera opening.")
+            }
             manager.openCamera(cameraIdRear, stateCallbackRear, backgroundHandler)
         } catch (e: CameraAccessException) {
             Log.e(TAG, e.toString())
@@ -371,7 +378,7 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * Sets up member variables related to camera.
+     * Sets up member variables related to front camera.
      *
      * @param width  The width of available size for camera preview
      * @param height The height of available size for camera preview
@@ -463,7 +470,44 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * Sets up member variables related to camera.
+     * Closes the current [CameraDevice].
+     */
+    private fun closeCameraFront() {
+        try {
+            cameraOpenCloseLock.acquire()
+            captureSessionFront?.close()
+            captureSessionFront = null
+            cameraDeviceFront?.close()
+            cameraDeviceFront = null
+            imageReaderFront?.close()
+            imageReaderFront = null
+        } catch (e: InterruptedException) {
+            throw RuntimeException("Interrupted while trying to lock front camera closing.", e)
+        } finally {
+            cameraOpenCloseLock.release()
+        }
+    }
+
+    /**
+     * Closes the current [CameraDevice].
+     */
+    private fun closeCameraRear() {
+        try {
+            cameraOpenCloseLock.acquire()
+            captureSessionRear?.close()
+            captureSessionRear = null
+            cameraDeviceRear?.close()
+            cameraDeviceRear = null
+            imageReaderRear?.close()
+            imageReaderRear = null
+        } catch (e: InterruptedException) {
+            throw RuntimeException("Interrupted while trying to lock rear camera closing.", e)
+        } finally {
+            cameraOpenCloseLock.release()
+        }
+    }
+    /**
+     * Sets up member variables related to rear camera.
      *
      * @param width  The width of available size for camera preview
      * @param height The height of available size for camera preview
@@ -701,7 +745,7 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * Creates a new [CameraCaptureSession] for camera preview.
+     * Creates a new [CameraCaptureSession] for front camera preview.
      */
     private fun createCameraPreviewSessionFront() {
         try {
