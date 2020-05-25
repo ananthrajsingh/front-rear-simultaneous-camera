@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.*
 import android.hardware.camera2.*
 import android.media.ImageReader
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -34,12 +35,23 @@ class CameraFragment : Fragment() {
     /**
      * An additional thread for running tasks that shouldn't block the UI.
      */
-    private var backgroundThread: HandlerThread? = null
+    private var backgroundThreadFront: HandlerThread? = null
+
+    /**
+     * An additional thread for running tasks that shouldn't block the UI.
+     */
+    private var backgroundThreadRear: HandlerThread? = null
 
     /**
      * A [Handler] for running tasks in the background.
      */
-    private var backgroundHandler: Handler? = null
+    private var backgroundHandlerFront: Handler? = null
+
+    /**
+     * A [Handler] for running tasks in the background.
+     */
+    private var backgroundHandlerRear: Handler? = null
+
 
     /**
      * An [ImageReader] that handles still image capture.
@@ -195,7 +207,7 @@ class CameraFragment : Fragment() {
 
 
     /**
-     * [TextureView.SurfaceTextureListener] handles several lifecycle events on a
+     * [TextureView.SurfaceTextureListener] handles several lifecycle events on the front camera's
      * [TextureView].
      */
     private val surfaceTextureListenerFront = object : TextureView.SurfaceTextureListener {
@@ -215,7 +227,7 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * [TextureView.SurfaceTextureListener] handles several lifecycle events on a
+     * [TextureView.SurfaceTextureListener] handles several lifecycle events on the rear camera's
      * [TextureView].
      */
     private val surfaceTextureListenerRear = object : TextureView.SurfaceTextureListener {
@@ -308,7 +320,7 @@ class CameraFragment : Fragment() {
             textureViewFront.surfaceTextureListener = surfaceTextureListenerFront
         }
         if (textureViewRear.isAvailable) {
-            openCameraFront(textureViewRear.width, textureViewRear.height)
+            openCameraRear(textureViewRear.width, textureViewRear.height)
         } else {
             textureViewRear.surfaceTextureListener = surfaceTextureListenerRear
         }
@@ -322,7 +334,7 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * Opens the camera specified by [Camera2BasicFragment.cameraId].
+     * Opens front camera specified by [Camera2BasicFragment.cameraId].
      */
     private fun openCameraFront(width: Int, height: Int) {
         val permission = activity?.let { ContextCompat.checkSelfPermission(it, Manifest.permission.CAMERA) }
@@ -338,7 +350,7 @@ class CameraFragment : Fragment() {
             if (!cameraOpenCloseLockFront.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
                 throw RuntimeException("Time out waiting to lock camera opening.")
             }
-            manager.openCamera(cameraIdFront, stateCallbackFront, backgroundHandler)
+            manager.openCamera(cameraIdFront, stateCallbackFront, backgroundHandlerRear)
         } catch (e: CameraAccessException) {
             Log.e(TAG, e.toString())
         } catch (e: InterruptedException) {
@@ -348,7 +360,7 @@ class CameraFragment : Fragment() {
     }
 
     /**
-     * Opens the camera specified by [Camera2BasicFragment.cameraId].
+     * Opens rear camera specified by [Camera2BasicFragment.cameraId].
      */
     private fun openCameraRear(width: Int, height: Int) {
         val permission = activity?.let { ContextCompat.checkSelfPermission(it, Manifest.permission.CAMERA) }
@@ -364,7 +376,7 @@ class CameraFragment : Fragment() {
             if (!cameraOpenCloseLockRear.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
                 throw RuntimeException("Time out waiting to lock camera opening.")
             }
-            manager.openCamera(cameraIdRear, stateCallbackRear, backgroundHandler)
+            manager.openCamera(cameraIdRear, stateCallbackRear, backgroundHandlerRear)
         } catch (e: CameraAccessException) {
             Log.e(TAG, e.toString())
         } catch (e: InterruptedException) {
@@ -410,7 +422,7 @@ class CameraFragment : Fragment() {
                     CompareSizesByViewAspectRatio(textureViewFront.height, textureViewFront.width))
                 imageReaderFront = ImageReader.newInstance(aspectRatio.width, aspectRatio.height,
                     ImageFormat.JPEG, /*maxImages*/ 2).apply {
-                    setOnImageAvailableListener(onImageAvailableListenerFront, backgroundHandler)
+                    setOnImageAvailableListener(onImageAvailableListenerFront, backgroundHandlerFront)
                 }
 
                 Log.d(TAG, "selected aspect ratio " + aspectRatio.height  + "x" + aspectRatio.width + " : " + aspectRatio.height/aspectRatio.width)
@@ -453,10 +465,6 @@ class CameraFragment : Fragment() {
 //                    textureView.setAspectRatio(previewSize.height, previewSize.width)
 //                }
 
-                // Check if the flash is supported.
-                flashSupported =
-                    characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-
                 this.cameraIdFront = cameraId
 
                 // We've found a viable camera and finished setting up member variables,
@@ -479,6 +487,11 @@ class CameraFragment : Fragment() {
      */
     private fun closeCameraFront() {
         try {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.N) {
+                captureSessionFront?.stopRepeating();
+                captureSessionFront?.abortCaptures();
+            }
+
             cameraOpenCloseLockFront.acquire()
             captureSessionFront?.close()
             captureSessionFront = null
@@ -498,6 +511,10 @@ class CameraFragment : Fragment() {
      */
     private fun closeCameraRear() {
         try {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.N) {
+                captureSessionRear?.stopRepeating();
+                captureSessionRear?.abortCaptures();
+            }
             cameraOpenCloseLockRear.acquire()
             captureSessionRear?.close()
             captureSessionRear = null
@@ -539,7 +556,7 @@ class CameraFragment : Fragment() {
                     CompareSizesByViewAspectRatio(textureViewRear.height, textureViewRear.width))
                 imageReaderRear = ImageReader.newInstance(aspectRatio.width, aspectRatio.height,
                     ImageFormat.JPEG, /*maxImages*/ 2).apply {
-                    setOnImageAvailableListener(onImageAvailableListenerRear, backgroundHandler)
+                    setOnImageAvailableListener(onImageAvailableListenerRear, backgroundHandlerRear)
                 }
 
                 Log.d(TAG, "selected aspect ratio " + aspectRatio.height  + "x" + aspectRatio.width + " : " + aspectRatio.height/aspectRatio.width)
@@ -581,10 +598,6 @@ class CameraFragment : Fragment() {
 //                } else {
 //                    textureView.setAspectRatio(previewSize.height, previewSize.width)
 //                }
-
-                // Check if the flash is supported.
-                flashSupported =
-                    characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
 
                 this.cameraIdRear = cameraId
 
@@ -730,19 +743,26 @@ class CameraFragment : Fragment() {
      * Starts a background thread and its [Handler].
      */
     private fun startBackgroundThread() {
-        backgroundThread = HandlerThread("CameraBackground").also { it.start() }
-        backgroundHandler = Handler(backgroundThread?.looper)
+        backgroundThreadFront = HandlerThread("CameraBackgroundFront").also { it.start() }
+        backgroundThreadRear = HandlerThread("CameraBackgroundRear").also { it.start() }
+        backgroundHandlerFront = Handler(backgroundThreadFront?.looper)
+        backgroundHandlerRear = Handler(backgroundThreadRear?.looper)
     }
 
     /**
      * Stops the background thread and its [Handler].
      */
     private fun stopBackgroundThread() {
-        backgroundThread?.quitSafely()
+        backgroundThreadFront?.quitSafely()
+        backgroundThreadRear?.quitSafely()
         try {
-            backgroundThread?.join()
-            backgroundThread = null
-            backgroundHandler = null
+            backgroundThreadFront?.join()
+            backgroundThreadFront = null
+            backgroundHandlerFront = null
+
+            backgroundThreadRear?.join()
+            backgroundThreadRear = null
+            backgroundHandlerRear = null
         } catch (e: InterruptedException) {
             Log.e(TAG, e.toString())
         }
@@ -782,13 +802,11 @@ class CameraFragment : Fragment() {
                             // Auto focus should be continuous for camera preview.
                             previewRequestBuilderFront.set(CaptureRequest.CONTROL_AF_MODE,
                                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                            // Flash is automatically enabled when necessary.
-                            setAutoFlash(previewRequestBuilderFront)
 
                             // Finally, we start displaying the camera preview.
                             previewRequestFront = previewRequestBuilderFront.build()
                             captureSessionFront?.setRepeatingRequest(previewRequestFront,
-                                captureCallback, backgroundHandler)
+                                captureCallback, backgroundHandlerFront)
                         } catch (e: CameraAccessException) {
                             Log.e(TAG, e.toString())
                         }
@@ -796,7 +814,6 @@ class CameraFragment : Fragment() {
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
-//                        activity.showToast("Failed")
                         Log.d(TAG, "CaptureSession failed")
                     }
                 }, null)
@@ -839,13 +856,11 @@ class CameraFragment : Fragment() {
                             // Auto focus should be continuous for camera preview.
                             previewRequestBuilderRear.set(CaptureRequest.CONTROL_AF_MODE,
                                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                            // Flash is automatically enabled when necessary.
-                            setAutoFlash(previewRequestBuilderRear)
 
                             // Finally, we start displaying the camera preview.
                             previewRequestRear = previewRequestBuilderRear.build()
                             captureSessionRear?.setRepeatingRequest(previewRequestRear,
-                                captureCallback, backgroundHandler)
+                                captureCallback, backgroundHandlerRear)
                         } catch (e: CameraAccessException) {
                             Log.e(TAG, e.toString())
                         }
@@ -863,13 +878,6 @@ class CameraFragment : Fragment() {
 
     }
 
-
-    private fun setAutoFlash(requestBuilder: CaptureRequest.Builder) {
-        if (flashSupported) {
-            requestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
-                CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)
-        }
-    }
 
     companion object {
 
